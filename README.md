@@ -13,7 +13,7 @@ It is a single HTML file with no dependencies.
 
 ## Using it
 
-- **Drag** the red hand, ideally by the dashed ring at its tip. The Eastern hands keep the correct offset.
+- **Drag** the red hand, ideally by the dashed ring at its tip. The green hands keep the correct offset.
 - **Keyboard:** focus the red hand and use the arrow keys (5 minutes) or Page Up / Page Down (1 hour).
 - **Time zone:** the drop-down lists every zone your browser knows, with a short Common group at the top. Eastern is the default.
 - **Back to live:** while you are exploring, a red "Back to live" link beside the drop-down returns to the current time. It reads LIVE when the clock is already live.
