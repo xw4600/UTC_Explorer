@@ -14,7 +14,7 @@ It is a single HTML file with no dependencies.
 ## Using it
 
 - **Drag** the red hand, ideally by the dashed ring at its tip. The green hands keep the correct offset.
-- **Keyboard:** focus the red hand and use the arrow keys (5 minutes) or Page Up / Page Down (1 hour).
+- **Keyboard:** after you click or drag the red hand, the arrow keys nudge it by 5 minutes, and Page Up / Page Down by 1 hour. You can also Tab to the hand and use the same keys.
 - **Time zone:** the drop-down lists one entry per UTC offset, west to east, each shown as the zone abbreviation, its local time and the UTC time, for example `EDT: 8:00 AM - UTC 12:00`. The times update as you drag. Zones without a common abbreviation show as `UTC+5:30` and so on. Eastern is the default. Choosing a zone snaps the clock back to live time in that zone.
 - **Back to live:** while you are exploring, a red "Back to live" link beside the drop-down returns to the current time. It reads LIVE when the clock is already live.
 

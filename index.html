@@ -317,6 +317,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
     lastAng = pointerAngle(e);
     uhEl.classList.add('dragging');
     try { uhEl.setPointerCapture(e.pointerId); } catch (err) {}
+    try { uhEl.focus({ preventScroll: true }); } catch (err) {}
     if (!exploring) { exploreMs = shown(); setMode(true); }
     e.preventDefault();
   });
