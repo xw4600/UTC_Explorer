@@ -22,8 +22,8 @@
 .ucn .ucn-date{font-size:.6em;letter-spacing:.04em}
 .ucn .ucn-controls{display:flex;gap:14px 18px;align-items:center;justify-content:center;flex-wrap:wrap}
 .ucn .ucn-zlabel{font-size:14px;letter-spacing:.14em;color:var(--green)}
-.ucn select.ucn-zone{font:inherit;font-size:16px;letter-spacing:.04em;color:var(--green);background:#000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%2304650D' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;border:2px solid var(--green);border-radius:0;box-shadow:none;padding:10px 40px 10px 14px;margin:0;min-width:14em;max-width:100%;height:auto;cursor:pointer;-webkit-appearance:none;appearance:none}
-.ucn select.ucn-zone option,.ucn select.ucn-zone optgroup{background:#000;color:var(--green)}
+.ucn select.ucn-zone{font:inherit;font-size:16px;letter-spacing:.02em;color:var(--green);background:#000 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%2304650D' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;border:2px solid var(--green);border-radius:0;box-shadow:none;padding:10px 40px 10px 14px;margin:0;min-width:22em;max-width:100%;height:auto;cursor:pointer;-webkit-appearance:none;appearance:none}
+.ucn select.ucn-zone option{background:#000;color:var(--green)}
 .ucn select.ucn-zone:focus-visible,.ucn button.ucn-live:focus-visible{outline:2px solid var(--red);outline-offset:3px}
 .ucn button.ucn-live{font:inherit;font-size:14px;letter-spacing:.14em;color:var(--green);background:transparent;border:0;border-radius:0;box-shadow:none;padding:6px 4px;margin:0;min-width:11em;text-align:center;text-transform:none}
 .ucn button.ucn-live:disabled{cursor:default;opacity:1}
@@ -33,7 +33,7 @@
 <div class="ucn">
 <svg class="ucn-dial" viewBox="0 0 800 800" aria-hidden="true"></svg>
 <div class="ucn-readout">
-<div class="ucn-row zn"><span class="ucn-tag ucn-zname">NEW YORK</span><span class="ucn-zt">--:-- --</span><span class="ucn-tz"></span><span class="ucn-date ucn-zd"></span></div>
+<div class="ucn-row zn"><span class="ucn-tag ucn-zname">EDT</span><span class="ucn-zt">--:-- --</span><span class="ucn-date ucn-zd"></span></div>
 <div class="ucn-row utc"><span class="ucn-tag">UTC</span><span class="ucn-ut">--:--</span><span class="ucn-date ucn-utd"></span></div>
 <p class="ucn-note ucn-diff"></p>
 </div>
@@ -48,12 +48,15 @@
   var MIN = 60000, HALF_DAY = 12 * 3600 * 1000;
   // <helpers>
   function pad(x) { return (x < 10 ? '0' : '') + x; }
+  function makeParts(zone) {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', timeZoneName: 'short'
+    });
+  }
   function makeFmts(zone) {
     return {
-      parts: new Intl.DateTimeFormat('en-US', {
-        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
-        hour: 'numeric', minute: 'numeric', timeZoneName: 'short'
-      }),
+      parts: makeParts(zone),
       date: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' })
     };
   }
@@ -70,20 +73,34 @@
     v.offsetMin = Math.round((Date.UTC(v.y, v.mo - 1, v.d, v.h, v.mi) - t) / 60000);
     return v;
   }
+  function abbr(tz) { return tz.indexOf('GMT') === 0 ? 'UTC' + tz.slice(3) : tz; }
   function fmtSpan(mins) {
     var h = Math.floor(mins / 60), m = mins % 60, out = [];
     if (h > 0) out.push(h + (h === 1 ? ' hour' : ' hours'));
     if (m > 0) out.push(m + ' min');
     return out.join(' ');
   }
-  function diffText(info, city) {
-    var gap = -info.offsetMin;
-    if (gap === 0) return city === 'UTC' ? 'Both clocks are showing UTC' : 'UTC and ' + city + ' (' + info.tz + ') show the same time';
-    return 'UTC is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' ahead of ' : ' behind ') + city + ' (' + info.tz + ')';
+  function diffText(info) {
+    var ab = abbr(info.tz), gap = -info.offsetMin;
+    if (gap === 0) return ab === 'UTC' ? 'Both clocks are showing UTC' : ab + ' is the same as UTC';
+    return ab + ' is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' behind' : ' ahead of') + ' UTC';
   }
-  function cityOf(zone) {
-    var p = zone.split('/');
-    return p[p.length - 1].replace(/_/g, ' ');
+  function optText(info, t) {
+    var d = new Date(t), h12 = info.h % 12 === 0 ? 12 : info.h % 12;
+    return abbr(info.tz) + ': ' + h12 + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM') +
+           ' - UTC ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+  // One entry per UTC offset in effect at time t. pref lists well-known zones, which win ties.
+  function buildReps(zones, t, pref) {
+    var byOff = {};
+    zones.forEach(function (z) {
+      var off = zoneInfo({ parts: makeParts(z) }, t).offsetMin;
+      var rank = pref.indexOf(z);
+      if (rank < 0) rank = 1000;
+      if (!byOff[off] || rank < byOff[off].rank) byOff[off] = { zone: z, rank: rank, off: off };
+    });
+    return Object.keys(byOff).map(function (k) { return byOff[k]; })
+      .sort(function (a, b) { return a.off - b.off; });
   }
   // </helpers>
   function pt(r, deg) {
@@ -91,37 +108,20 @@
     return [400 + r * Math.cos(a), 400 + r * Math.sin(a)];
   }
   var DEFAULT_ZONE = 'America/New_York';
-  var COMMON = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Asia/Dubai',
-    'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney', 'Pacific/Auckland', 'UTC'];
-  function valid(z) {
-    try { new Intl.DateTimeFormat('en-US', { timeZone: z }); return true; } catch (e) { return false; }
-  }
+  var PREF = [DEFAULT_ZONE, 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage',
+    'Pacific/Honolulu', 'Pacific/Pago_Pago', 'America/Halifax', 'America/St_Johns', 'America/Sao_Paulo',
+    'America/Mexico_City', 'America/Bogota', 'America/Caracas', 'America/Argentina/Buenos_Aires',
+    'Atlantic/Cape_Verde', 'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Athens',
+    'Europe/Moscow', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Nairobi', 'Africa/Johannesburg',
+    'Asia/Tehran', 'Asia/Dubai', 'Asia/Kabul', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Calcutta',
+    'Asia/Kathmandu', 'Asia/Katmandu', 'Asia/Dhaka', 'Asia/Yangon', 'Asia/Rangoon', 'Asia/Bangkok',
+    'Asia/Shanghai', 'Australia/Eucla', 'Asia/Tokyo',
+    'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Sydney', 'Pacific/Noumea', 'Pacific/Auckland',
+    'Pacific/Chatham', 'Pacific/Tongatapu', 'Pacific/Kiritimati', 'Pacific/Marquesas'];
   var utFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
-  var allZones = (typeof Intl.supportedValuesOf === 'function') ? Intl.supportedValuesOf('timeZone') : COMMON.slice();
+  var allZones = (typeof Intl.supportedValuesOf === 'function') ? Intl.supportedValuesOf('timeZone') : PREF.slice();
   if (allZones.indexOf('UTC') < 0) allZones.push('UTC');
-  var groups = {};
-  allZones.forEach(function (z) {
-    if (!valid(z)) return;
-    var g = z.indexOf('/') < 0 ? 'Other' : z.split('/')[0];
-    (groups[g] = groups[g] || []).push(z);
-  });
-  function fillSelect(sel) {
-    function addGroup(name, zones) {
-      var og = document.createElement('optgroup');
-      og.label = name;
-      zones.forEach(function (z) {
-        var op = document.createElement('option');
-        op.value = z;
-        op.textContent = cityOf(z);
-        og.appendChild(op);
-      });
-      sel.appendChild(og);
-    }
-    addGroup('Common', COMMON.filter(valid));
-    Object.keys(groups).sort().forEach(function (g) { addGroup(g, groups[g]); });
-    sel.value = DEFAULT_ZONE;
-  }
+  var reps = buildReps(allZones, Date.now(), PREF);
   function init(root) {
     if (root.getAttribute('data-ready')) return;
     root.setAttribute('data-ready', '1');
@@ -154,10 +154,25 @@
     svg.innerHTML = s;
     var hh = q('.ucn-hh'), mh = q('.ucn-mh'), uhEl = q('.ucn-uh');
     var liveBtn = q('.ucn-live'), sel = q('.ucn-zone');
-    fillSelect(sel);
-    var zone = DEFAULT_ZONE, fmts = makeFmts(zone);
+    var fmtsFor = {};
+    reps.forEach(function (r) {
+      fmtsFor[r.zone] = makeFmts(r.zone);
+      var op = document.createElement('option');
+      op.value = r.zone;
+      sel.appendChild(op);
+    });
+    sel.value = DEFAULT_ZONE;
+    var zone = DEFAULT_ZONE, fmts = fmtsFor[DEFAULT_ZONE] || makeFmts(DEFAULT_ZONE);
+    var lastOptT = null;
     function rot(el, deg) { el.setAttribute('transform', 'rotate(' + deg.toFixed(2) + ' 400 400)'); }
     var exploring = false, exploreMs = 0;
+    function refreshOptions(t) {
+      if (t === lastOptT) return;
+      lastOptT = t;
+      reps.forEach(function (r, idx) {
+        sel.options[idx].textContent = optText(zoneInfo(fmtsFor[r.zone], t), t);
+      });
+    }
     function render(t) {
       var info = zoneInfo(fmts, t), d = new Date(t);
       var uh = d.getUTCHours(), um = d.getUTCMinutes();
@@ -165,16 +180,15 @@
       rot(mh, info.mi * 6);
       rot(uhEl, ((uh % 12) + um / 60) * 30);
       var h12 = info.h % 12 === 0 ? 12 : info.h % 12;
-      var city = cityOf(zone);
-      q('.ucn-zname').textContent = city.toUpperCase();
+      q('.ucn-zname').textContent = abbr(info.tz);
       q('.ucn-zt').textContent = pad(h12) + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM');
-      q('.ucn-tz').textContent = info.tz;
       q('.ucn-zd').textContent = fmts.date.format(d);
       q('.ucn-ut').textContent = pad(uh) + ':' + pad(um);
       q('.ucn-utd').textContent = utFmt.format(d);
-      q('.ucn-diff').textContent = diffText(info, city);
+      q('.ucn-diff').textContent = diffText(info);
       uhEl.setAttribute('aria-valuenow', String(uh * 60 + um));
       uhEl.setAttribute('aria-valuetext', pad(uh) + ':' + pad(um) + ' UTC');
+      refreshOptions(t);
     }
     function shown() {
       return exploring ? Math.round(exploreMs / MIN) * MIN : Math.floor(Date.now() / MIN) * MIN;
@@ -192,7 +206,7 @@
     }
     sel.addEventListener('change', function () {
       zone = sel.value;
-      fmts = makeFmts(zone);
+      fmts = fmtsFor[zone];
       setMode(false);
       render(shown());
     });
