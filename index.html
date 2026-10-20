@@ -278,6 +278,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
   sel.addEventListener('change', function () {
     zone = sel.value;
     fmts = makeFmts(zone);
+    setMode(false);
     render(shown());
   });
   liveBtn.addEventListener('click', function () {

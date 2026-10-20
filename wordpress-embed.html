@@ -193,6 +193,7 @@
     sel.addEventListener('change', function () {
       zone = sel.value;
       fmts = makeFmts(zone);
+      setMode(false);
       render(shown());
     });
     liveBtn.addEventListener('click', function () { setMode(false); render(shown()); });
