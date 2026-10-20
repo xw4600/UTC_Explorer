@@ -1,0 +1,179 @@
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Semi+Condensed:wght@600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+.ucn{--green:#04650D;--red:#E5232B;--font-num:'Barlow Semi Condensed','Arial Narrow',Arial,sans-serif;--font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;box-sizing:border-box;width:100%;max-width:720px;margin:0 auto;padding:16px;background:#000;color:var(--green);font-family:var(--font-mono);display:flex;flex-direction:column;align-items:center;gap:14px;line-height:1.3}
+.ucn *{box-sizing:border-box}
+.ucn p{margin:0;padding:0}
+.ucn .ucn-dial{display:block;width:100%;max-width:100%;height:auto;aspect-ratio:1;user-select:none;-webkit-user-select:none}
+.ucn .ucn-dial .stk{stroke:var(--green);fill:none;stroke-linecap:round}
+.ucn .ucn-dial .fil{fill:var(--green)}
+.ucn .ucn-dial .red-stk{stroke:var(--red);fill:none;stroke-linecap:round}
+.ucn .ucn-dial .red-fil{fill:var(--red)}
+.ucn .ucn-dial .ring{stroke:var(--red);fill:none;opacity:.55;stroke-dasharray:5 6}
+.ucn .ucn-dial .hit{stroke:transparent;fill:transparent;pointer-events:stroke}
+.ucn .ucn-dial .hit-tip{fill:transparent;pointer-events:all}
+.ucn .ucn-dial text{font-family:var(--font-num);font-weight:600;fill:var(--green);text-anchor:middle;dominant-baseline:central}
+.ucn .ucn-uh{cursor:grab;outline:none;touch-action:none}
+.ucn .ucn-uh.dragging{cursor:grabbing}
+.ucn .ucn-uh:focus-visible .ring{opacity:1;stroke-dasharray:none}
+.ucn .ucn-readout{display:grid;gap:6px;justify-items:center;min-width:0}
+.ucn .ucn-row{display:flex;align-items:baseline;gap:14px;font-size:clamp(18px,4.4vw,28px);font-variant-numeric:tabular-nums;flex-wrap:wrap;justify-content:center;color:var(--green)}
+.ucn .ucn-row.utc{color:var(--red)}
+.ucn .ucn-tag{letter-spacing:.12em;font-size:.7em;min-width:5.2em;text-align:right}
+.ucn .ucn-date{font-size:.6em;letter-spacing:.04em}
+.ucn .ucn-controls{display:flex;gap:16px;align-items:center;justify-content:center;flex-wrap:wrap}
+.ucn .ucn-mode{font-size:14px;letter-spacing:.14em;min-width:9.5em;text-align:center}
+.ucn .ucn-mode.exploring{color:var(--red)}
+.ucn button.ucn-reset{font:inherit;font-size:16px;letter-spacing:.06em;color:var(--green);background:transparent;border:2px solid var(--green);border-radius:0;box-shadow:none;padding:10px 20px;margin:0;cursor:pointer;text-transform:none}
+.ucn button.ucn-reset:hover:not(:disabled){background:var(--green);color:#000}
+.ucn button.ucn-reset:focus-visible{outline:2px solid var(--red);outline-offset:3px}
+.ucn button.ucn-reset:disabled{opacity:.35;cursor:default}
+.ucn .ucn-note{font-size:14px;letter-spacing:.04em;text-align:center;color:var(--green)}
+</style>
+<div class="ucn">
+<svg class="ucn-dial" viewBox="0 0 800 800" aria-hidden="true"></svg>
+<div class="ucn-readout">
+<div class="ucn-row et"><span class="ucn-tag">EASTERN</span><span class="ucn-et">--:-- --</span><span class="ucn-tz"></span><span class="ucn-date ucn-etd"></span></div>
+<div class="ucn-row utc"><span class="ucn-tag">UTC</span><span class="ucn-ut">--:--</span><span class="ucn-date ucn-utd"></span></div>
+<p class="ucn-note ucn-diff"></p>
+</div>
+<div class="ucn-controls">
+<span class="ucn-mode" aria-live="polite">LIVE</span>
+<button class="ucn-reset" type="button" disabled>Back to current time</button>
+</div>
+<p class="ucn-note">Drag the red hand (or focus it and use the arrow keys). The green hands follow.</p>
+</div>
+<script>
+(function () {
+  var MIN = 60000, HALF_DAY = 12 * 3600 * 1000;
+  function pt(r, deg) {
+    var a = (deg - 90) * Math.PI / 180;
+    return [400 + r * Math.cos(a), 400 + r * Math.sin(a)];
+  }
+  function pad(x) { return (x < 10 ? '0' : '') + x; }
+  var etFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York', hourCycle: 'h23',
+    hour: 'numeric', minute: 'numeric', timeZoneName: 'short',
+    weekday: 'short', month: 'short', day: 'numeric'
+  });
+  var utFmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric'
+  });
+  function init(root) {
+    if (root.getAttribute('data-ready')) return;
+    root.setAttribute('data-ready', '1');
+    function q(sel) { return root.querySelector(sel); }
+    var svg = q('.ucn-dial');
+    var s = '';
+    s += '<circle class="stk" cx="400" cy="400" r="392" stroke-width="6"/>';
+    for (var m = 0; m < 60; m++) {
+      var major = m % 5 === 0;
+      var p1 = pt(300, m * 6), p2 = pt(major ? 270 : 286, m * 6);
+      s += '<line class="stk" x1="' + p1[0].toFixed(1) + '" y1="' + p1[1].toFixed(1) +
+           '" x2="' + p2[0].toFixed(1) + '" y2="' + p2[1].toFixed(1) +
+           '" stroke-width="' + (major ? 7 : 2.5) + '"/>';
+    }
+    for (var n = 1; n <= 12; n++) {
+      var o = pt(344, n * 30), i = pt(226, n * 30);
+      s += '<text x="' + o[0].toFixed(1) + '" y="' + o[1].toFixed(1) + '" font-size="62">' + n + '</text>';
+      s += '<text x="' + i[0].toFixed(1) + '" y="' + i[1].toFixed(1) + '" font-size="30" opacity="0.8">' + (n === 12 ? 24 : n + 12) + '</text>';
+    }
+    s += '<g class="ucn-hh"><line class="stk" x1="400" y1="428" x2="400" y2="250" stroke-width="18"/></g>';
+    s += '<g class="ucn-mh"><line class="stk" x1="400" y1="436" x2="400" y2="112" stroke-width="10"/></g>';
+    s += '<circle class="fil" cx="400" cy="400" r="20"/>';
+    s += '<g class="ucn-uh" tabindex="0" role="slider" aria-label="UTC hour hand" aria-valuemin="0" aria-valuemax="1440">' +
+         '<line class="hit" x1="400" y1="440" x2="400" y2="168" stroke-width="64"/>' +
+         '<line class="red-stk" x1="400" y1="440" x2="400" y2="168" stroke-width="7"/>' +
+         '<circle class="hit-tip" cx="400" cy="160" r="40"/>' +
+         '<circle class="ring" cx="400" cy="160" r="30" stroke-width="3"/>' +
+         '<circle class="red-fil" cx="400" cy="160" r="15"/></g>';
+    s += '<circle class="red-fil" cx="400" cy="400" r="8" style="pointer-events:none"/>';
+    svg.innerHTML = s;
+    var hh = q('.ucn-hh'), mh = q('.ucn-mh'), uhEl = q('.ucn-uh');
+    var modeEl = q('.ucn-mode'), resetBtn = q('.ucn-reset');
+    function rot(el, deg) { el.setAttribute('transform', 'rotate(' + deg.toFixed(2) + ' 400 400)'); }
+    var exploring = false, exploreMs = 0;
+    function render(t) {
+      var d = new Date(t), eh = 0, em = 0, tz = '', wd = '', mo = '', dy = '';
+      etFmt.formatToParts(d).forEach(function (p) {
+        if (p.type === 'hour') eh = parseInt(p.value, 10) % 24;
+        else if (p.type === 'minute') em = parseInt(p.value, 10);
+        else if (p.type === 'timeZoneName') tz = p.value;
+        else if (p.type === 'weekday') wd = p.value;
+        else if (p.type === 'month') mo = p.value;
+        else if (p.type === 'day') dy = p.value;
+      });
+      var uh = d.getUTCHours(), um = d.getUTCMinutes();
+      rot(hh, ((eh % 12) + em / 60) * 30);
+      rot(mh, em * 6);
+      rot(uhEl, ((uh % 12) + um / 60) * 30);
+      var h12 = eh % 12 === 0 ? 12 : eh % 12;
+      q('.ucn-et').textContent = pad(h12) + ':' + pad(em) + ' ' + (eh < 12 ? 'AM' : 'PM');
+      q('.ucn-tz').textContent = tz;
+      q('.ucn-etd').textContent = wd + ' ' + mo + ' ' + dy;
+      q('.ucn-ut').textContent = pad(uh) + ':' + pad(um);
+      q('.ucn-utd').textContent = utFmt.format(d);
+      q('.ucn-diff').textContent = 'UTC is ' + (((uh - eh) + 24) % 24) + ' hours ahead of Eastern (' + tz + ')';
+      uhEl.setAttribute('aria-valuenow', String(uh * 60 + um));
+      uhEl.setAttribute('aria-valuetext', pad(uh) + ':' + pad(um) + ' UTC');
+    }
+    function shown() {
+      return exploring ? Math.round(exploreMs / MIN) * MIN : Math.floor(Date.now() / MIN) * MIN;
+    }
+    function setMode(x) {
+      exploring = x;
+      modeEl.textContent = x ? 'EXPLORING' : 'LIVE';
+      modeEl.className = 'ucn-mode' + (x ? ' exploring' : '');
+      resetBtn.disabled = !x;
+    }
+    function nudge(ms) {
+      if (!exploring) { exploreMs = shown(); setMode(true); }
+      exploreMs += ms;
+      render(shown());
+    }
+    var dragging = false, lastAng = 0;
+    function pointerAngle(e) {
+      var r = svg.getBoundingClientRect();
+      return Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180 / Math.PI;
+    }
+    uhEl.addEventListener('touchstart', function (e) { e.preventDefault(); }, { passive: false });
+    uhEl.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      lastAng = pointerAngle(e);
+      uhEl.classList.add('dragging');
+      try { uhEl.setPointerCapture(e.pointerId); } catch (err) {}
+      if (!exploring) { exploreMs = shown(); setMode(true); }
+      e.preventDefault();
+    });
+    uhEl.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var a = pointerAngle(e), delta = a - lastAng;
+      if (delta > 180) delta -= 360;
+      if (delta < -180) delta += 360;
+      lastAng = a;
+      exploreMs += delta / 360 * HALF_DAY;
+      render(shown());
+    });
+    function endDrag(e) {
+      if (!dragging) return;
+      dragging = false;
+      uhEl.classList.remove('dragging');
+      try { uhEl.releasePointerCapture(e.pointerId); } catch (err) {}
+    }
+    uhEl.addEventListener('pointerup', endDrag);
+    uhEl.addEventListener('pointercancel', endDrag);
+    uhEl.addEventListener('keydown', function (e) {
+      var step = 0;
+      if (e.key === 'ArrowRight' || e.key === 'ArrowUp') step = 5 * MIN;
+      else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') step = -5 * MIN;
+      else if (e.key === 'PageUp') step = 60 * MIN;
+      else if (e.key === 'PageDown') step = -60 * MIN;
+      if (step) { e.preventDefault(); nudge(step); }
+    });
+    resetBtn.addEventListener('click', function () { setMode(false); render(shown()); });
+    render(shown());
+    setInterval(function () { if (!exploring) render(shown()); }, 1000);
+  }
+  var roots = document.querySelectorAll('.ucn');
+  for (var k = 0; k < roots.length; k++) init(roots[k]);
+})();
+</script>
