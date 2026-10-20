@@ -74,19 +74,19 @@ body {
 select {
   font: inherit;
   font-size: 16px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
   color: var(--green);
   background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%2304650D' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;
   border: 2px solid var(--green);
   border-radius: 0;
   padding: 10px 40px 10px 14px;
-  min-width: 14em;
+  min-width: 22em;
   max-width: 100%;
   cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
 }
-select option, select optgroup { background: var(--bg); color: var(--green); }
+select option { background: var(--bg); color: var(--green); }
 select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outline-offset: 3px; }
 .mode {
   font: inherit;
@@ -107,7 +107,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
 <svg id="dial" viewBox="0 0 800 800" aria-hidden="true"></svg>
 
 <div class="readout">
-  <div class="row zn"><span class="tag" id="zname">NEW YORK</span><span id="zt">--:-- --</span><span id="tz"></span><span class="date" id="zd"></span></div>
+  <div class="row zn"><span class="tag" id="zname">EDT</span><span id="zt">--:-- --</span><span class="date" id="zd"></span></div>
   <div class="row utc"><span class="tag">UTC</span><span id="ut">--:--</span><span class="date" id="utd"></span></div>
   <p class="note" id="diff"></p>
 </div>
@@ -126,12 +126,15 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
 
   // <helpers>
   function pad(x) { return (x < 10 ? '0' : '') + x; }
+  function makeParts(zone) {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', timeZoneName: 'short'
+    });
+  }
   function makeFmts(zone) {
     return {
-      parts: new Intl.DateTimeFormat('en-US', {
-        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
-        hour: 'numeric', minute: 'numeric', timeZoneName: 'short'
-      }),
+      parts: makeParts(zone),
       date: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' })
     };
   }
@@ -148,20 +151,34 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
     v.offsetMin = Math.round((Date.UTC(v.y, v.mo - 1, v.d, v.h, v.mi) - t) / 60000);
     return v;
   }
+  function abbr(tz) { return tz.indexOf('GMT') === 0 ? 'UTC' + tz.slice(3) : tz; }
   function fmtSpan(mins) {
     var h = Math.floor(mins / 60), m = mins % 60, out = [];
     if (h > 0) out.push(h + (h === 1 ? ' hour' : ' hours'));
     if (m > 0) out.push(m + ' min');
     return out.join(' ');
   }
-  function diffText(info, city) {
-    var gap = -info.offsetMin;
-    if (gap === 0) return city === 'UTC' ? 'Both clocks are showing UTC' : 'UTC and ' + city + ' (' + info.tz + ') show the same time';
-    return 'UTC is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' ahead of ' : ' behind ') + city + ' (' + info.tz + ')';
+  function diffText(info) {
+    var ab = abbr(info.tz), gap = -info.offsetMin;
+    if (gap === 0) return ab === 'UTC' ? 'Both clocks are showing UTC' : ab + ' is the same as UTC';
+    return ab + ' is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' behind' : ' ahead of') + ' UTC';
   }
-  function cityOf(zone) {
-    var p = zone.split('/');
-    return p[p.length - 1].replace(/_/g, ' ');
+  function optText(info, t) {
+    var d = new Date(t), h12 = info.h % 12 === 0 ? 12 : info.h % 12;
+    return abbr(info.tz) + ': ' + h12 + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM') +
+           ' - UTC ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
+  }
+  // One entry per UTC offset in effect at time t. pref lists well-known zones, which win ties.
+  function buildReps(zones, t, pref) {
+    var byOff = {};
+    zones.forEach(function (z) {
+      var off = zoneInfo({ parts: makeParts(z) }, t).offsetMin;
+      var rank = pref.indexOf(z);
+      if (rank < 0) rank = 1000;
+      if (!byOff[off] || rank < byOff[off].rank) byOff[off] = { zone: z, rank: rank, off: off };
+    });
+    return Object.keys(byOff).map(function (k) { return byOff[k]; })
+      .sort(function (a, b) { return a.off - b.off; });
   }
   // </helpers>
 
@@ -203,42 +220,43 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
     document.getElementById(id).setAttribute('transform', 'rotate(' + deg.toFixed(2) + ' 400 400)');
   }
 
-  // Time zone drop-down: a short "Common" group first, then every zone the browser knows, by region.
+  // Time zone drop-down: one entry per UTC offset, west to east, labelled like "EDT: 8:00 AM - UTC 12:00".
   var DEFAULT_ZONE = 'America/New_York';
-  var COMMON = ['America/New_York', 'America/Chicago', 'America/Denver', 'America/Los_Angeles',
-    'America/Anchorage', 'Pacific/Honolulu', 'Europe/London', 'Europe/Paris', 'Asia/Dubai',
-    'Asia/Kolkata', 'Asia/Tokyo', 'Australia/Sydney', 'Pacific/Auckland', 'UTC'];
-  function valid(z) {
-    try { new Intl.DateTimeFormat('en-US', { timeZone: z }); return true; } catch (e) { return false; }
-  }
-  var all = (typeof Intl.supportedValuesOf === 'function') ? Intl.supportedValuesOf('timeZone') : COMMON.slice();
+  var PREF = [DEFAULT_ZONE, 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage',
+    'Pacific/Honolulu', 'Pacific/Pago_Pago', 'America/Halifax', 'America/St_Johns', 'America/Sao_Paulo',
+    'America/Mexico_City', 'America/Bogota', 'America/Caracas', 'America/Argentina/Buenos_Aires',
+    'Atlantic/Cape_Verde', 'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Athens',
+    'Europe/Moscow', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Nairobi', 'Africa/Johannesburg',
+    'Asia/Tehran', 'Asia/Dubai', 'Asia/Kabul', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Calcutta',
+    'Asia/Kathmandu', 'Asia/Katmandu', 'Asia/Dhaka', 'Asia/Yangon', 'Asia/Rangoon', 'Asia/Bangkok', 'Asia/Shanghai', 'Australia/Eucla', 'Asia/Tokyo',
+    'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Sydney', 'Pacific/Noumea', 'Pacific/Auckland',
+    'Pacific/Chatham', 'Pacific/Tongatapu', 'Pacific/Kiritimati', 'Pacific/Marquesas'];
+  var all = (typeof Intl.supportedValuesOf === 'function') ? Intl.supportedValuesOf('timeZone') : PREF.slice();
   if (all.indexOf('UTC') < 0) all.push('UTC');
-  var groups = {};
-  all.forEach(function (z) {
-    if (!valid(z)) return;
-    var g = z.indexOf('/') < 0 ? 'Other' : z.split('/')[0];
-    (groups[g] = groups[g] || []).push(z);
-  });
+  var reps = buildReps(all, Date.now(), PREF);
   var sel = document.getElementById('zone');
-  function addGroup(name, zones) {
-    var og = document.createElement('optgroup');
-    og.label = name;
-    zones.forEach(function (z) {
-      var op = document.createElement('option');
-      op.value = z;
-      op.textContent = cityOf(z);
-      og.appendChild(op);
-    });
-    sel.appendChild(og);
-  }
-  addGroup('Common', COMMON.filter(valid));
-  Object.keys(groups).sort().forEach(function (g) { addGroup(g, groups[g]); });
+  var fmtsFor = {};
+  reps.forEach(function (r) {
+    fmtsFor[r.zone] = makeFmts(r.zone);
+    var op = document.createElement('option');
+    op.value = r.zone;
+    sel.appendChild(op);
+  });
   sel.value = DEFAULT_ZONE;
 
-  var zone = DEFAULT_ZONE, fmts = makeFmts(zone);
+  var zone = DEFAULT_ZONE, fmts = fmtsFor[DEFAULT_ZONE] || makeFmts(DEFAULT_ZONE);
   var exploring = false;
   var exploreMs = 0; // raw time being explored, in ms since epoch
+  var lastOptT = null;
   var liveBtn = document.getElementById('live');
+
+  function refreshOptions(t) {
+    if (t === lastOptT) return;
+    lastOptT = t;
+    reps.forEach(function (r, idx) {
+      sel.options[idx].textContent = optText(zoneInfo(fmtsFor[r.zone], t), t);
+    });
+  }
 
   function render(t) {
     var info = zoneInfo(fmts, t), d = new Date(t);
@@ -247,17 +265,16 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
     rot('mh', info.mi * 6);
     rot('uh', ((uh % 12) + um / 60) * 30);
     var h12 = info.h % 12 === 0 ? 12 : info.h % 12;
-    var city = cityOf(zone);
-    document.getElementById('zname').textContent = city.toUpperCase();
+    document.getElementById('zname').textContent = abbr(info.tz);
     document.getElementById('zt').textContent = pad(h12) + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM');
-    document.getElementById('tz').textContent = info.tz;
     document.getElementById('zd').textContent = fmts.date.format(d);
     document.getElementById('ut').textContent = pad(uh) + ':' + pad(um);
     document.getElementById('utd').textContent = utFmt.format(d);
-    document.getElementById('diff').textContent = diffText(info, city);
+    document.getElementById('diff').textContent = diffText(info);
     var uhEl = document.getElementById('uh');
     uhEl.setAttribute('aria-valuenow', String(uh * 60 + um));
     uhEl.setAttribute('aria-valuetext', pad(uh) + ':' + pad(um) + ' UTC');
+    refreshOptions(t);
   }
 
   function shown() {
@@ -277,7 +294,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
 
   sel.addEventListener('change', function () {
     zone = sel.value;
-    fmts = makeFmts(zone);
+    fmts = fmtsFor[zone];
     setMode(false);
     render(shown());
   });
