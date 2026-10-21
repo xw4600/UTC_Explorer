@@ -69,19 +69,19 @@ body {
 .row .tag { letter-spacing: 0.12em; font-size: 0.7em; min-width: 5.2em; text-align: right; }
 .row .date { font-size: 0.6em; letter-spacing: 0.04em; }
 .row.utc { color: var(--red); }
-.controls { display: flex; gap: 14px 18px; align-items: center; justify-content: center; flex-wrap: wrap; }
+.controls { display: flex; gap: 14px 18px; align-items: center; justify-content: center; flex-wrap: wrap; width: 100%; }
 .zlabel { font-size: 14px; letter-spacing: 0.14em; }
 select {
   font: inherit;
-  font-size: 16px;
+  font-size: 14px;
   letter-spacing: 0.02em;
   color: var(--green);
   background: var(--bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='14' height='9' viewBox='0 0 14 9'%3E%3Cpath d='M1 1l6 6 6-6' fill='none' stroke='%2304650D' stroke-width='2'/%3E%3C/svg%3E") no-repeat right 14px center;
   border: 2px solid var(--green);
   border-radius: 0;
   padding: 10px 40px 10px 14px;
-  min-width: 22em;
-  max-width: 100%;
+  width: min(100%, 46em);
+  min-width: 0;
   cursor: pointer;
   -webkit-appearance: none;
   appearance: none;
@@ -117,70 +117,302 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
   <select id="zone"></select>
   <button class="mode" id="live" type="button" aria-live="polite" disabled>&#9679; LIVE</button>
 </div>
-<p class="note">Drag the red hand (or focus it and use the arrow keys). The green hands follow.</p>
+<p class="note">Drag the red hand (or click it and use the arrow keys). The green hands follow.</p>
 
 <script>
 (function () {
   var C = 400, MIN = 60000, HALF_DAY = 12 * 3600 * 1000;
   var svg = document.getElementById('dial');
 
-  // <helpers>
+  // <core>
+  // Time zone data from Wikipedia, "List of time zone abbreviations" (CC BY-SA 4.0).
+  // Row: [abbreviation, name, offset in minutes, second offset in minutes or null, IANA zone or null].
+  // Rows with two offsets (ET, CT, MT, PT, AET) follow daylight saving through their IANA zone.
+  var ZONES = [
+    ["ACDT", "Australian Central Daylight Saving Time", 630, null, null],
+    ["ACST", "Australian Central Standard Time", 570, null, null],
+    ["ACT", "ASEAN Common Time (proposed)", 480, null, null],
+    ["ACT", "Acre Time", -300, null, null],
+    ["ACWST", "Australian Central Western Standard Time (unofficial)", 525, null, null],
+    ["ADT", "Atlantic Daylight Time", -180, null, null],
+    ["AEDT", "Australian Eastern Daylight Saving Time", 660, null, null],
+    ["AEST", "Australian Eastern Standard Time", 600, null, null],
+    ["AET (AEST/AEDT)", "Australian Eastern Time", 600, 660, "Australia/Sydney"],
+    ["AFT", "Afghanistan Time", 270, null, null],
+    ["AKDT", "Alaska Daylight Time", -480, null, null],
+    ["AKST", "Alaska Standard Time", -540, null, null],
+    ["ALMT", "Alma-Ata Time", 360, null, null],
+    ["AMST", "Amazon Summer Time (Brazil)", -180, null, null],
+    ["AMT", "Amazon Time (Brazil)", -240, null, null],
+    ["AMT", "Armenia Time", 240, null, null],
+    ["ANAT", "Anadyr Time", 720, null, null],
+    ["AQTT", "Aqtobe Time", 300, null, null],
+    ["ART", "Argentina Time", -180, null, null],
+    ["AST", "Arabia Standard Time", 180, null, null],
+    ["AST", "Atlantic Standard Time", -240, null, null],
+    ["AWST", "Australian Western Standard Time", 480, null, null],
+    ["AZOST", "Azores Summer Time", 0, null, null],
+    ["AZOT", "Azores Standard Time", -60, null, null],
+    ["AZT", "Azerbaijan Time", 240, null, null],
+    ["BIOT", "British Indian Ocean Time", 360, null, null],
+    ["BIT", "Baker Island Time", -720, null, null],
+    ["BNT", "Brunei Time", 480, null, null],
+    ["BOT", "Bolivia Time", -240, null, null],
+    ["BRST", "Bras\u00edlia Summer Time", -120, null, null],
+    ["BRT", "Bras\u00edlia Time", -180, null, null],
+    ["BST", "Bangladesh Standard Time", 360, null, null],
+    ["BST", "Bougainville Standard Time", 660, null, null],
+    ["BST", "British Summer Time", 60, null, null],
+    ["BTT", "Bhutan Time", 360, null, null],
+    ["CAT", "Central Africa Time", 120, null, null],
+    ["CCT", "Cocos Islands Time", 390, null, null],
+    ["CDT", "Central Daylight Time (North America)", -300, null, null],
+    ["CDT", "Cuba Daylight Time", -240, null, null],
+    ["CEST", "Central European Summer Time", 120, null, null],
+    ["CET", "Central European Time", 60, null, null],
+    ["CHADT", "Chatham Daylight Time", 825, null, null],
+    ["CHAST", "Chatham Standard Time", 765, null, null],
+    ["CHOST", "Choibalsan Summer Time", 540, null, null],
+    ["CHOT", "Choibalsan Standard Time", 480, null, null],
+    ["CHST", "Chamorro Standard Time", 600, null, null],
+    ["CHUT", "Chuuk Time", 600, null, null],
+    ["CIST", "Clipperton Island Standard Time", -480, null, null],
+    ["CKT", "Cook Island Time", -600, null, null],
+    ["CLST", "Chile Summer Time", -180, null, null],
+    ["CLT", "Chile Standard Time", -240, null, null],
+    ["COST", "Colombia Summer Time", -240, null, null],
+    ["COT", "Colombia Time", -300, null, null],
+    ["CST", "Central Standard Time (Central America)", -360, null, null],
+    ["CST", "Central Standard Time (North America)", -360, null, null],
+    ["CST", "China Standard Time", 480, null, null],
+    ["CST", "Cuba Standard Time", -300, null, null],
+    ["CT (CST/CDT)", "Central Time", -360, -300, "America/Chicago"],
+    ["CVT", "Cape Verde Time", -60, null, null],
+    ["CWST", "Central Western Standard Time (Australia) unofficial", 525, null, null],
+    ["CXT", "Christmas Island Time", 420, null, null],
+    ["DAVT", "Davis Time", 420, null, null],
+    ["DDUT", "Dumont d'Urville Time (in French Antarctic station)", 600, null, null],
+    ["DFT", "AIX-specific equivalent of Central European Time", 60, null, null],
+    ["EASST", "Easter Island Summer Time", -300, null, null],
+    ["EAST", "Easter Island Standard Time", -360, null, null],
+    ["EAT", "East Africa Time", 180, null, null],
+    ["ECT", "Eastern Caribbean Time", -240, null, null],
+    ["ECT", "Ecuador Time", -300, null, null],
+    ["EDT", "Eastern Daylight Time (North America)", -240, null, null],
+    ["EEST", "Eastern European Summer Time", 180, null, null],
+    ["EET", "Eastern European Time", 120, null, null],
+    ["EGST", "Eastern Greenland Summer Time", 0, null, null],
+    ["EGT", "Eastern Greenland Time", -60, null, null],
+    ["EST", "Eastern Standard Time (North America)", -300, null, null],
+    ["ET (EST/EDT)", "Eastern Time (North America)", -300, -240, "America/New_York"],
+    ["FET", "Further-eastern European Time", 180, null, null],
+    ["FJT", "Fiji Time", 720, null, null],
+    ["FKST", "Falkland Islands Summer Time", -180, null, null],
+    ["FKT", "Falkland Islands Time", -240, null, null],
+    ["FNT", "Fernando de Noronha Time", -120, null, null],
+    ["GALT", "Gal\u00e1pagos Time", -360, null, null],
+    ["GAMT", "Gambier Islands Time", -540, null, null],
+    ["GET", "Georgia Standard Time", 240, null, null],
+    ["GFT", "French Guiana Time", -180, null, null],
+    ["GILT", "Gilbert Island Time", 720, null, null],
+    ["GIT", "Gambier Island Time", -540, null, null],
+    ["GMT", "Greenwich Mean Time", 0, null, null],
+    ["GST", "Gulf Standard Time", 240, null, null],
+    ["GST", "South Georgia and the South Sandwich Islands Time", -120, null, null],
+    ["GYT", "Guyana Time", -240, null, null],
+    ["HAEC", "Heure Avanc\u00e9e d'Europe Centrale (French name for CEST)", 120, null, null],
+    ["HDT", "Hawaii\u2013Aleutian Daylight Time", -540, null, null],
+    ["HKT", "Hong Kong Time", 480, null, null],
+    ["HMT", "Heard and McDonald Islands Time", 300, null, null],
+    ["HOVST", "Hovd Summer Time (not used from 2017\u2013present)", 480, null, null],
+    ["HOVT", "Hovd Time", 420, null, null],
+    ["HST", "Hawaii\u2013Aleutian Standard Time", -600, null, null],
+    ["ICT", "Indochina Time", 420, null, null],
+    ["IDLW", "International Date Line West time zone", -720, null, null],
+    ["IDT", "Israel Daylight Time", 180, null, null],
+    ["IOT", "Indian Ocean Time", 360, null, null],
+    ["IRDT", "Iran Daylight Time", 270, null, null],
+    ["IRKT", "Irkutsk Time", 480, null, null],
+    ["IRST", "Iran Standard Time", 210, null, null],
+    ["IST", "Indian Standard Time", 330, null, null],
+    ["IST", "Irish Standard Time", 60, null, null],
+    ["IST", "Israel Standard Time", 120, null, null],
+    ["JST", "Japan Standard Time", 540, null, null],
+    ["KALT", "Kaliningrad Time", 120, null, null],
+    ["KGT", "Kyrgyzstan Time", 360, null, null],
+    ["KOST", "Kosrae Time", 660, null, null],
+    ["KRAT", "Krasnoyarsk Time", 420, null, null],
+    ["KST", "Korea Standard Time", 540, null, null],
+    ["LHST", "Lord Howe Standard Time", 630, null, null],
+    ["LHST", "Lord Howe Summer Time", 660, null, null],
+    ["LINT", "Line Islands Time", 840, null, null],
+    ["MAGT", "Magadan Time", 720, null, null],
+    ["MART", "Marquesas Islands Time", -570, null, null],
+    ["MAWT", "Mawson Station Time", 300, null, null],
+    ["MDT", "Mountain Daylight Time (North America)", -360, null, null],
+    ["MEST", "Middle European Summer Time (same zone as CEST)", 120, null, null],
+    ["MET", "Middle European Time (same zone as CET)", 60, null, null],
+    ["MHT", "Marshall Islands Time", 720, null, null],
+    ["MIST", "Macquarie Island Station Time", 660, null, null],
+    ["MIT", "Marquesas Islands Time", -570, null, null],
+    ["MMT", "Myanmar Standard Time", 390, null, null],
+    ["MSK", "Moscow Time", 180, null, null],
+    ["MST", "Malaysian Standard Time", 480, null, null],
+    ["MST", "Mountain Standard Time (North America)", -420, null, null],
+    ["MT (MST/MDT)", "Mountain Time (North America)", -420, -360, "America/Denver"],
+    ["MUT", "Mauritius Time", 240, null, null],
+    ["MVT", "Maldives Time", 300, null, null],
+    ["MYT", "Malaysia Time", 480, null, null],
+    ["NCT", "New Caledonia Time", 660, null, null],
+    ["NDT", "Newfoundland Daylight Time", -150, null, null],
+    ["NFT", "Norfolk Island Time", 660, null, null],
+    ["NOVT", "Novosibirsk Time", 420, null, null],
+    ["NPT", "Nepal Time", 345, null, null],
+    ["NST", "Newfoundland Standard Time", -210, null, null],
+    ["NT", "Newfoundland Time", -210, null, null],
+    ["NUT", "Niue Time", -660, null, null],
+    ["NZDST", "New Zealand Daylight Saving Time", 780, null, null],
+    ["NZDT", "New Zealand Daylight Time", 780, null, null],
+    ["NZST", "New Zealand Standard Time", 720, null, null],
+    ["OMST", "Omsk Time", 360, null, null],
+    ["ORAT", "Oral Time", 300, null, null],
+    ["PDT", "Pacific Daylight Time (North America)", -420, null, null],
+    ["PET", "Peru Time", -300, null, null],
+    ["PETT", "Kamchatka Time", 720, null, null],
+    ["PGT", "Papua New Guinea Time", 600, null, null],
+    ["PHOT", "Phoenix Island Time", 780, null, null],
+    ["PHST", "Philippine Standard Time", 480, null, null],
+    ["PHT", "Philippine Time", 480, null, null],
+    ["PKT", "Pakistan Standard Time", 300, null, null],
+    ["PMDT", "Saint Pierre and Miquelon Daylight Time", -120, null, null],
+    ["PMST", "Saint Pierre and Miquelon Standard Time", -180, null, null],
+    ["PONT", "Pohnpei Standard Time", 660, null, null],
+    ["PST", "Pacific Standard Time (North America)", -480, null, null],
+    ["PT (PST/PDT)", "Pacific Time (North America)", -480, -420, "America/Los_Angeles"],
+    ["PWT", "Palau Time", 540, null, null],
+    ["PYST", "Paraguay Summer Time", -180, null, null],
+    ["PYT", "Paraguay Time", -240, null, null],
+    ["RET", "R\u00e9union Time", 240, null, null],
+    ["ROTT", "Rothera Research Station Time", -180, null, null],
+    ["SAKT", "Sakhalin Island Time", 660, null, null],
+    ["SAMT", "Samara Time", 240, null, null],
+    ["SAST", "South African Standard Time", 120, null, null],
+    ["SBT", "Solomon Islands Time", 660, null, null],
+    ["SCT", "Seychelles Time", 240, null, null],
+    ["SDT", "Samoa Daylight Time", -600, null, null],
+    ["SGT", "Singapore Time", 480, null, null],
+    ["SLST", "Sri Lanka Standard Time", 330, null, null],
+    ["SRET", "Srednekolymsk Time", 660, null, null],
+    ["SRT", "Suriname Time", -180, null, null],
+    ["SST", "Samoa Standard Time", -660, null, null],
+    ["SYOT", "Showa Station Time", 180, null, null],
+    ["TAHT", "Tahiti Time", -600, null, null],
+    ["TFT", "French Southern and Antarctic Time", 300, null, null],
+    ["THA", "Thailand Standard Time", 420, null, null],
+    ["TJT", "Tajikistan Time", 300, null, null],
+    ["TKT", "Tokelau Time", 780, null, null],
+    ["TLT", "Timor Leste Time", 540, null, null],
+    ["TMT", "Turkmenistan Time", 300, null, null],
+    ["TOT", "Tonga Time", 780, null, null],
+    ["TRT", "Turkey Time", 180, null, null],
+    ["TST", "Taiwan Standard Time", 480, null, null],
+    ["TVT", "Tuvalu Time", 720, null, null],
+    ["ULAST", "Ulaanbaatar Summer Time", 540, null, null],
+    ["ULAT", "Ulaanbaatar Standard Time", 480, null, null],
+    ["UTC", "Coordinated Universal Time", 0, null, null],
+    ["UYST", "Uruguay Summer Time", -120, null, null],
+    ["UYT", "Uruguay Standard Time", -180, null, null],
+    ["UZT", "Uzbekistan Time", 300, null, null],
+    ["VET", "Venezuelan Standard Time", -240, null, null],
+    ["VLAT", "Vladivostok Time", 600, null, null],
+    ["VOLT", "Volgograd Time", 180, null, null],
+    ["VOST", "Vostok Station Time", 360, null, null],
+    ["VUT", "Vanuatu Time", 660, null, null],
+    ["WAKT", "Wake Island Time", 720, null, null],
+    ["WAST", "West Africa Summer Time", 120, null, null],
+    ["WAT", "West Africa Time", 60, null, null],
+    ["WEST", "Western European Summer Time", 60, null, null],
+    ["WET", "Western European Time", 0, null, null],
+    ["WGST", "West Greenland Summer Time", -120, null, null],
+    ["WGT", "West Greenland Time", -180, null, null],
+    ["WIB", "Western Indonesian Time", 420, null, null],
+    ["WIT", "Eastern Indonesian Time", 540, null, null],
+    ["WITA", "Central Indonesia Time", 480, null, null],
+    ["WST", "Western Standard Time", 480, null, null],
+    ["YAKT", "Yakutsk Time", 540, null, null],
+    ["YEKT", "Yekaterinburg Time", 300, null, null]
+  ];
+  var DEFAULT_ABBR = 'ET (EST/EDT)';
   function pad(x) { return (x < 10 ? '0' : '') + x; }
-  function makeParts(zone) {
-    return new Intl.DateTimeFormat('en-US', {
-      timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
-      hour: 'numeric', minute: 'numeric', timeZoneName: 'short'
-    });
+  function fmtOffset(m) {
+    var a = Math.abs(m);
+    return 'UTC' + (m < 0 ? '\u2212' : '+') + pad(Math.floor(a / 60)) + ':' + pad(a % 60);
   }
-  function makeFmts(zone) {
+  function optLabel(z) {
+    return z[0] + ' - ' + z[1] + ' - ' + fmtOffset(z[2]) + (z[3] === null ? '' : ' / ' + fmtOffset(z[3]));
+  }
+  var utFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric' });
+  function ianaFmts(zone) {
     return {
-      parts: makeParts(zone),
+      parts: new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, hourCycle: 'h23', year: 'numeric', month: 'numeric', day: 'numeric',
+        hour: 'numeric', minute: 'numeric'
+      }),
       date: new Intl.DateTimeFormat('en-US', { timeZone: zone, weekday: 'short', month: 'short', day: 'numeric' })
     };
   }
-  function zoneInfo(fmts, t) {
-    var d = new Date(t), v = { y: 0, mo: 1, d: 1, h: 0, mi: 0, tz: '' };
-    fmts.parts.formatToParts(d).forEach(function (p) {
-      if (p.type === 'year') v.y = parseInt(p.value, 10);
-      else if (p.type === 'month') v.mo = parseInt(p.value, 10);
-      else if (p.type === 'day') v.d = parseInt(p.value, 10);
-      else if (p.type === 'hour') v.h = parseInt(p.value, 10) % 24;
-      else if (p.type === 'minute') v.mi = parseInt(p.value, 10);
-      else if (p.type === 'timeZoneName') v.tz = p.value;
-    });
-    v.offsetMin = Math.round((Date.UTC(v.y, v.mo - 1, v.d, v.h, v.mi) - t) / 60000);
-    return v;
+  // Which abbreviation applies at this offset, for rows like "ET (EST/EDT)".
+  function abbrFor(z, off) {
+    var m = /\(([^\/()]+)\/([^()]+)\)/.exec(z[0]);
+    if (!m) return z[0];
+    return off === z[2] ? m[1] : (off === z[3] ? m[2] : z[0]);
   }
-  function abbr(tz) { return tz.indexOf('GMT') === 0 ? 'UTC' + tz.slice(3) : tz; }
+  // Local clock reading for row z at instant t (ms since epoch, whole minutes).
+  function resolve(z, t) {
+    var info;
+    if (z[4]) {
+      if (!z.cache) z.cache = ianaFmts(z[4]);
+      var v = { y: 0, mo: 1, d: 1, h: 0, mi: 0 };
+      z.cache.parts.formatToParts(new Date(t)).forEach(function (p) {
+        if (p.type === 'year') v.y = parseInt(p.value, 10);
+        else if (p.type === 'month') v.mo = parseInt(p.value, 10);
+        else if (p.type === 'day') v.d = parseInt(p.value, 10);
+        else if (p.type === 'hour') v.h = parseInt(p.value, 10) % 24;
+        else if (p.type === 'minute') v.mi = parseInt(p.value, 10);
+      });
+      info = {
+        h: v.h, mi: v.mi,
+        offsetMin: Math.round((Date.UTC(v.y, v.mo - 1, v.d, v.h, v.mi) - t) / 60000),
+        date: z.cache.date.format(new Date(t))
+      };
+    } else {
+      var local = new Date(t + z[2] * 60000);
+      info = { h: local.getUTCHours(), mi: local.getUTCMinutes(), offsetMin: z[2], date: utFmt.format(local) };
+    }
+    info.abbr = abbrFor(z, info.offsetMin);
+    return info;
+  }
   function fmtSpan(mins) {
     var h = Math.floor(mins / 60), m = mins % 60, out = [];
     if (h > 0) out.push(h + (h === 1 ? ' hour' : ' hours'));
     if (m > 0) out.push(m + ' min');
     return out.join(' ');
   }
-  function diffText(info) {
-    var ab = abbr(info.tz), gap = -info.offsetMin;
-    if (gap === 0) return ab === 'UTC' ? 'Both clocks are showing UTC' : ab + ' is the same as UTC';
-    return ab + ' is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' behind' : ' ahead of') + ' UTC';
+  function diffText(z, info) {
+    var gap = -info.offsetMin;
+    if (gap === 0) return info.abbr === 'UTC' ? 'Both clocks are showing UTC' : z[1] + ' matches UTC';
+    return z[1] + ' is ' + fmtSpan(Math.abs(gap)) + (gap > 0 ? ' behind' : ' ahead of') + ' UTC';
   }
-  function optText(info, t) {
-    var d = new Date(t), h12 = info.h % 12 === 0 ? 12 : info.h % 12;
-    return abbr(info.tz) + ': ' + h12 + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM') +
-           ' - UTC ' + pad(d.getUTCHours()) + ':' + pad(d.getUTCMinutes());
-  }
-  // One entry per UTC offset in effect at time t. pref lists well-known zones, which win ties.
-  function buildReps(zones, t, pref) {
-    var byOff = {};
-    zones.forEach(function (z) {
-      var off = zoneInfo({ parts: makeParts(z) }, t).offsetMin;
-      var rank = pref.indexOf(z);
-      if (rank < 0) rank = 1000;
-      if (!byOff[off] || rank < byOff[off].rank) byOff[off] = { zone: z, rank: rank, off: off };
+  // Row indexes ordered west to east, then by abbreviation.
+  function sortedIndexes() {
+    return ZONES.map(function (z, i) { return i; }).sort(function (a, b) {
+      var A = ZONES[a], B = ZONES[b];
+      if (A[2] !== B[2]) return A[2] - B[2];
+      if (A[0] !== B[0]) return A[0] < B[0] ? -1 : 1;
+      return A[1] < B[1] ? -1 : (A[1] > B[1] ? 1 : 0);
     });
-    return Object.keys(byOff).map(function (k) { return byOff[k]; })
-      .sort(function (a, b) { return a.off - b.off; });
   }
-  // </helpers>
+  // </core>
 
   function pt(r, deg) {
     var a = (deg - 90) * Math.PI / 180;
@@ -213,68 +445,43 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
   s += '<circle class="red-fil" cx="400" cy="400" r="8" style="pointer-events:none"/>';
   svg.innerHTML = s;
 
-  var utFmt = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC', weekday: 'short', month: 'short', day: 'numeric'
-  });
   function rot(id, deg) {
     document.getElementById(id).setAttribute('transform', 'rotate(' + deg.toFixed(2) + ' 400 400)');
   }
 
-  // Time zone drop-down: one entry per UTC offset, west to east, labelled like "EDT: 8:00 AM - UTC 12:00".
-  var DEFAULT_ZONE = 'America/New_York';
-  var PREF = [DEFAULT_ZONE, 'America/Chicago', 'America/Denver', 'America/Los_Angeles', 'America/Anchorage',
-    'Pacific/Honolulu', 'Pacific/Pago_Pago', 'America/Halifax', 'America/St_Johns', 'America/Sao_Paulo',
-    'America/Mexico_City', 'America/Bogota', 'America/Caracas', 'America/Argentina/Buenos_Aires',
-    'Atlantic/Cape_Verde', 'UTC', 'Europe/London', 'Europe/Paris', 'Europe/Athens',
-    'Europe/Moscow', 'Africa/Lagos', 'Africa/Cairo', 'Africa/Nairobi', 'Africa/Johannesburg',
-    'Asia/Tehran', 'Asia/Dubai', 'Asia/Kabul', 'Asia/Karachi', 'Asia/Kolkata', 'Asia/Calcutta',
-    'Asia/Kathmandu', 'Asia/Katmandu', 'Asia/Dhaka', 'Asia/Yangon', 'Asia/Rangoon', 'Asia/Bangkok', 'Asia/Shanghai', 'Australia/Eucla', 'Asia/Tokyo',
-    'Australia/Adelaide', 'Australia/Brisbane', 'Australia/Sydney', 'Pacific/Noumea', 'Pacific/Auckland',
-    'Pacific/Chatham', 'Pacific/Tongatapu', 'Pacific/Kiritimati', 'Pacific/Marquesas'];
-  var all = (typeof Intl.supportedValuesOf === 'function') ? Intl.supportedValuesOf('timeZone') : PREF.slice();
-  if (all.indexOf('UTC') < 0) all.push('UTC');
-  var reps = buildReps(all, Date.now(), PREF);
+  // Drop-down: every row of the Wikipedia list, west to east, as "Abbr - Name - UTC offset".
   var sel = document.getElementById('zone');
-  var fmtsFor = {};
-  reps.forEach(function (r) {
-    fmtsFor[r.zone] = makeFmts(r.zone);
+  var defaultIdx = 0;
+  sortedIndexes().forEach(function (idx) {
     var op = document.createElement('option');
-    op.value = r.zone;
+    op.value = String(idx);
+    op.textContent = optLabel(ZONES[idx]);
     sel.appendChild(op);
+    if (ZONES[idx][0] === DEFAULT_ABBR) defaultIdx = idx;
   });
-  sel.value = DEFAULT_ZONE;
+  sel.value = String(defaultIdx);
+  var cur = ZONES[defaultIdx];
 
-  var zone = DEFAULT_ZONE, fmts = fmtsFor[DEFAULT_ZONE] || makeFmts(DEFAULT_ZONE);
   var exploring = false;
   var exploreMs = 0; // raw time being explored, in ms since epoch
-  var lastOptT = null;
   var liveBtn = document.getElementById('live');
 
-  function refreshOptions(t) {
-    if (t === lastOptT) return;
-    lastOptT = t;
-    reps.forEach(function (r, idx) {
-      sel.options[idx].textContent = optText(zoneInfo(fmtsFor[r.zone], t), t);
-    });
-  }
-
   function render(t) {
-    var info = zoneInfo(fmts, t), d = new Date(t);
+    var info = resolve(cur, t), d = new Date(t);
     var uh = d.getUTCHours(), um = d.getUTCMinutes();
     rot('hh', ((info.h % 12) + info.mi / 60) * 30);
     rot('mh', info.mi * 6);
     rot('uh', ((uh % 12) + um / 60) * 30);
     var h12 = info.h % 12 === 0 ? 12 : info.h % 12;
-    document.getElementById('zname').textContent = abbr(info.tz);
+    document.getElementById('zname').textContent = info.abbr;
     document.getElementById('zt').textContent = pad(h12) + ':' + pad(info.mi) + ' ' + (info.h < 12 ? 'AM' : 'PM');
-    document.getElementById('zd').textContent = fmts.date.format(d);
+    document.getElementById('zd').textContent = info.date;
     document.getElementById('ut').textContent = pad(uh) + ':' + pad(um);
     document.getElementById('utd').textContent = utFmt.format(d);
-    document.getElementById('diff').textContent = diffText(info);
+    document.getElementById('diff').textContent = diffText(cur, info);
     var uhEl = document.getElementById('uh');
     uhEl.setAttribute('aria-valuenow', String(uh * 60 + um));
     uhEl.setAttribute('aria-valuetext', pad(uh) + ':' + pad(um) + ' UTC');
-    refreshOptions(t);
   }
 
   function shown() {
@@ -282,7 +489,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
   }
   function setMode(x) {
     exploring = x;
-    liveBtn.textContent = x ? '↺ BACK TO LIVE' : '● LIVE';
+    liveBtn.textContent = x ? '\u21BA BACK TO LIVE' : '\u25CF LIVE';
     liveBtn.className = 'mode' + (x ? ' exploring' : '');
     liveBtn.disabled = !x;
   }
@@ -293,8 +500,7 @@ select:focus-visible, .mode:focus-visible { outline: 2px solid var(--red); outli
   }
 
   sel.addEventListener('change', function () {
-    zone = sel.value;
-    fmts = fmtsFor[zone];
+    cur = ZONES[parseInt(sel.value, 10)];
     setMode(false);
     render(shown());
   });
